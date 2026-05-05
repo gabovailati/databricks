@@ -44,10 +44,11 @@ Thirteen source entities were profiled across three groups: Race/Event, Driver, 
 | 4 | **All time/duration values are pandas timedelta strings** (`"0 days HH:MM:SS.ffffff"`). PySpark has no native parser for this format; a UDF or regex-based transformation is required. One inconsistency exists: Ocon's `Time` in `sprint_results` lacks the microsecond component. | High | 6 entities |
 | 5 | **`constructor_standings` and `constructor_results` are byte-for-byte identical**. One file must be designated the authoritative source and the other retired or populated with distinct data. | Critical | 2 entities |
 | 6 | **`races_data` and `season_data` are near-duplicates** — `season_data` is a strict column subset of `races_data`. These should be consolidated into a single `dim_season_calendar` table. | High | 2 entities |
-| 7 | **BOR's `Driver ID` is null** in `qualifying_results`. This breaks referential integrity with `drivers_data` and any downstream join on driver slug. Fix value: `bortoleto`. | High | 1 entity |
-| 8 | **All logical integers stored as float64** due to pandas CSV type inference (`Position`, `Points`, `GridPosition`, `Laps`, `Lap Number`, etc.). Explicit casts are required in the Bronze → Silver transformation. | Medium | 9 entities |
-| 9 | **Datetime values are not normalised**. Three different formats exist: tz-aware strings with mixed UTC offsets (`races_data`), tz-aware local time (`circuit_info` sessions), and naive UTC strings without a `Z` suffix (`circuit_info` utc fields). All must be cast to UTC in Silver. | Medium | 3 entities |
-| 10 | **All data is a single-event snapshot**. The schema and key design must be extended to support multi-round, multi-season history before any Silver layer tables are written. | High | All entities |
+| 7 | **BOR's `Driver ID` is the string `"nan"` in `qualifying_results`** — not SQL NULL. Spark reads it as a 3-character string literal, so `IS NULL` checks will silently pass BOR through as valid. Enriched layer must explicitly detect and replace `"nan"` with NULL before FK joins. Fix value: `bortoleto`. Colapinto's `HeadshotUrl` has the same problem: stored as the string `"None"`. | High | 1–2 entities |
+| 8 | **Pandas sentinel strings masquerade as valid data in Spark**: `"nan"`, `"None"`, `"NaT"` are written verbatim to CSV by pandas when it serialises null/missing values. Spark `read_files` treats them as non-null strings. A global cleansing step in the Enriched layer must replace these sentinel values with SQL NULL before any quality checks or FK joins run. | Critical | All entities (latent) |
+| 9 | **All logical integers stored as float64** due to pandas CSV type inference (`Position`, `Points`, `GridPosition`, `Laps`, `Lap Number`, etc.). Explicit casts are required in the Bronze → Silver transformation. | Medium | 9 entities |
+| 10 | **Datetime values are not normalised**. Three different formats exist: tz-aware strings with mixed UTC offsets (`races_data`), tz-aware local time (`circuit_info` sessions), and naive UTC strings without a `Z` suffix (`circuit_info` utc fields). All must be cast to UTC in Silver. | Medium | 3 entities |
+| 11 | **All data is a single-event snapshot**. The schema and key design must be extended to support multi-round, multi-season history before any Silver layer tables are written. | High | All entities |
 
 ---
 
@@ -123,7 +124,7 @@ Thirteen source entities were profiled across three groups: Race/Event, Driver, 
 | FirstName | StringType | 0 | 20 | |
 | LastName | StringType | 0 | 20 | |
 | FullName | StringType | 0 | 20 | |
-| HeadshotUrl | StringType | 1 | 19 | 1 null: Colapinto (stored as Python `None`) |
+| HeadshotUrl | StringType | 0 | 20 | Colapinto's value is the string `"None"` (4 chars) — NOT SQL NULL. Spark `IS NULL` = false. Must be treated as a sentinel string in Enriched layer. |
 | CountryCode | StringType | 20 | 0 | **ENTIRELY NULL** — extraction bug |
 | Position | DoubleType | 0 | 20 | Finishing position 1–20; should be IntegerType |
 | ClassifiedPosition | StringType | 0 | 17 | Mixed: digit strings `"1"`–`"17"` + `"R"` for retired |
@@ -271,7 +272,7 @@ Identical schema to `race_results`. Key differences:
 | Column | Inferred Type | Nulls | Distinct | Notes |
 |--------|--------------|-------|----------|-------|
 | Abbreviation | StringType | 0 | 20 | 3-char; all unique; no nulls |
-| Driver ID | StringType | 1 | 19 + null | **BOR's Driver ID is null** — referential integrity break |
+| Driver ID | StringType | 0 | 20 | **BOR's Driver ID is the string `"nan"`** — Spark reads it as non-null (length 3). `IS NULL` = false. Needs sentinel detection. |
 | Full Name | StringType | 0 | 20 | |
 | Team | StringType | 0 | 10 | |
 | Q1 Time | StringType | 1 | 19 | Pandas timedelta string; 1 null (BOR) |
@@ -279,10 +280,10 @@ Identical schema to `race_results`. Key differences:
 | Q3 Time | StringType | 11 | 9 | Null for 10 non-top-10 drivers — structurally expected |
 | Position | DoubleType | 1 | 19 | 1 null (BOR); should be IntegerType |
 
-**Candidate PK**: `Abbreviation` (20 unique, 0 nulls). `Driver ID` is disqualified as PK due to BOR null.
+**Candidate PK**: `Abbreviation` (20 unique, 0 nulls). `Driver ID` is disqualified as PK — BOR's value is the string `"nan"`, not a valid slug.
 
 **DQ Issues**:
-- **BOR's `Driver ID` is null** — must be corrected to `bortoleto`. This is the single most impactful data fix required before Silver layer joins can proceed.
+- **BOR's `Driver ID` is the string `"nan"`** — Spark `IS NULL` returns false, so null-check DQ rules will silently pass BOR through as valid. The Enriched layer must detect `driver_id = 'nan'` explicitly and replace it with `bortoleto`.
 - Q2 and Q3 nulls are structurally expected (elimination format) — must be documented and preserved as meaningful nulls, not treated as missing data.
 - Q1 null for BOR — unclear if BOR did not participate or if this is an extraction artifact alongside the null `Driver ID`.
 - All time columns (`Q1 Time`, `Q2 Time`, `Q3 Time`) use pandas timedelta string format.
@@ -452,7 +453,7 @@ This table defines the canonical primary key for each entity. These decisions ar
 | circuit_info | `(event, session_name)` | Composite | After flattening nested sessions |
 | drivers_data | `Driver ID` (slug) | StringType | Canonical driver identifier; used as FK everywhere |
 | driver_standings | `(Round, Driver ID)` | Composite | `Round` must be injected; currently a snapshot |
-| qualifying_results | `(Round, Abbreviation)` | Composite | `Driver ID` disqualified due to BOR null; fix BOR before switching to `(Round, Driver ID)` |
+| qualifying_results | `(Round, Abbreviation)` | Composite | `Driver ID` disqualified — BOR's value is string `"nan"`; replace sentinel before switching to `(Round, Driver ID)` |
 | status_data | `(Round, Abbreviation)` | Composite | `Round` must be injected |
 | constructors_data | `Team Name` | StringType | Fragile — add `TeamId` slug as surrogate |
 | constructor_standings | Resolve duplicate with `constructor_results` first | — | Both files identical |
@@ -484,7 +485,8 @@ This table defines the canonical primary key for each entity. These decisions ar
 
 | ID | Issue | Affected Entities | Resolution |
 |----|-------|------------------|------------|
-| DQ-06 | BOR's `Driver ID` null in `qualifying_results` | `qualifying_results` | Set `bortoleto` for BOR; add Bronze-layer data fix step |
+| DQ-06 | BOR's `Driver ID` is string `"nan"` in `qualifying_results` — Spark `IS NULL` = false | `qualifying_results` | Detect `driver_id = 'nan'` explicitly; replace with `bortoleto` in Enriched layer |
+| DQ-06b | Pandas sentinel strings (`"nan"`, `"None"`, `"NaT"`) written verbatim to CSV; Spark reads them as valid non-null strings | All entities (latent) | Add global sentinel-to-NULL replacement step at top of every Enriched notebook before any DQ checks run |
 | DQ-07 | Driver identifier split: slug vs 3-letter abbreviation | `lap_times`, `pit_stops` vs all others | Build `dim_driver_mapping` from `drivers_data`; apply at Silver join |
 | DQ-08 | `races_data` and `season_data` are near-duplicates | Both | Retire `season_data`; source `dim_season_calendar` from `races_data` |
 | DQ-09 | Pandas timedelta string format on all time/duration columns | `race_results`, `sprint_results`, `qualifying_results`, `constructor_results`, `constructor_standings`, `lap_times`, `pit_stops` | Write shared timedelta UDF; handle both `HH:MM:SS.ffffff` and `HH:MM:SS` variants |
@@ -524,7 +526,7 @@ The following items must be resolved or formally accepted before proceeding to t
 
 1. **Build `dim_driver_mapping`**: A Bronze-layer lookup table derived from `drivers_data` mapping `Abbreviation` (3-letter) to `Driver ID` (slug). This unlocks joins from `lap_times` and `pit_stops` to all other entities.
 2. **Write shared timedelta UDF**: A PySpark UDF to parse `"0 days HH:MM:SS[.ffffff]"` strings into `DurationType` (seconds as DoubleType) and a parallel `TimestampType` representation for time-of-race values. The UDF must handle both formats (with and without microseconds).
-3. **Fix BOR `Driver ID`** (DQ-06): Add a data fix step in the Bronze profiling/cleansing notebook that sets `bortoleto` for BOR in `qualifying_results`.
+3. **Fix BOR `Driver ID` and all pandas sentinel strings** (DQ-06 / DQ-06b): The Enriched layer must include a global sentinel-replacement step — replace `"nan"`, `"None"`, `"NaT"` with SQL NULL across every entity before any DQ rules run. BOR's `driver_id` then resolves to NULL and can be corrected to `bortoleto`.
 4. **Enrich `constructors_data`** (DQ-10): Join `constructors_data` with the `TeamId` and `TeamColor` fields from `race_results` to create a richer `dim_constructor` dimension.
 5. **Schema enforcement layer**: Define explicit Silver schemas (all integers as IntegerType, all datetimes as TimestampType UTC) and enforce them via Delta table `COMMENT` and column constraints.
 
