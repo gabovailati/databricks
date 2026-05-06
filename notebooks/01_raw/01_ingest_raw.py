@@ -103,9 +103,16 @@ if needs_round_number and ROUND_NUMBER == -1:
 
 # COMMAND ----------
 
+import re
 from pyspark.sql import functions as F
 from pyspark.sql.types import IntegerType, DateType
 from functools import reduce
+
+
+def sanitize_columns(df):
+    """Replace spaces and Delta-invalid chars with underscores in all column names."""
+    renamed = [re.sub(r'[ ,;{}\(\)\n\t=]+', '_', c).strip('_') for c in df.columns]
+    return df.toDF(*renamed)
 
 
 def flatten_circuit_info(json_df):
@@ -151,6 +158,7 @@ if reader_format == "csv":
     )
     # Trailing all-null rows are common in pandas-exported CSVs
     raw_df = raw_df.dropna(how="all")
+    raw_df = sanitize_columns(raw_df)
 
 elif reader_format == "json":
     raw_json = spark.read.option("multiLine", "true").json(source_path)

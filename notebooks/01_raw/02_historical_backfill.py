@@ -44,9 +44,16 @@ print(f"Ingestion date : {INGESTION_DATE_STR}")
 
 # COMMAND ----------
 
+import re
 from pyspark.sql import functions as F
 from pyspark.sql.types import IntegerType, DateType
 from functools import reduce
+
+
+def sanitize_columns(df):
+    """Replace spaces and Delta-invalid chars with underscores in all column names."""
+    renamed = [re.sub(r'[ ,;{}\(\)\n\t=]+', '_', c).strip('_') for c in df.columns]
+    return df.toDF(*renamed)
 
 # Maps entity name -> (source_filename, reader_format, needs_round_number)
 ENTITY_REGISTRY = {
@@ -112,6 +119,7 @@ def ingest_entity(entity, needs_round):
             .csv(source_path)
             .dropna(how="all")
         )
+        df = sanitize_columns(df)
     else:
         df = flatten_circuit_info(
             spark.read.option("multiLine", "true").json(source_path)
