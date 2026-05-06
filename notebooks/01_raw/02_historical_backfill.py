@@ -4,14 +4,14 @@
 # MAGIC
 # MAGIC **Notebook**: `01_raw/02_historical_backfill.py`
 # MAGIC **Issue**: #4 — Raw Layer Pipeline
-# MAGIC **Purpose**: Orchestrate ingestion of all 11 active entities for a single round in one notebook run.
+# MAGIC **Purpose**: Ingest all 11 active entities for a single round in one notebook run.
 # MAGIC
-# MAGIC This notebook loops through every active entity and calls `01_ingest_raw` via `dbutils.notebook.run`.
-# MAGIC It is the entry point for historical backfills when a full round of source files lands at once.
+# MAGIC All ingestion logic is inlined — no `dbutils.notebook.run` calls — so this notebook
+# MAGIC runs on both all-purpose clusters and Serverless SQL Warehouse compute.
 # MAGIC
-# MAGIC **Partial failure policy**: if any entity fails, execution continues to the next entity.
-# MAGIC A summary is printed at the end. If any entity failed, an exception is re-raised so the
-# MAGIC calling workflow can alert without silently swallowing errors.
+# MAGIC **Partial failure policy**: if any entity fails, execution continues to the next.
+# MAGIC A summary is printed at the end. If any entity failed an exception is re-raised so the
+# MAGIC calling workflow marks the run as failed.
 
 # COMMAND ----------
 # MAGIC %md ## 0. Parameters
@@ -28,9 +28,10 @@ dbutils.widgets.text("ingestion_date", str(datetime.date.today()), "Ingestion da
 
 CATALOG = dbutils.widgets.get("catalog")
 SCHEMA = dbutils.widgets.get("schema")
-DATASOURCE_PATH = dbutils.widgets.get("datasource_path")
+DATASOURCE_PATH = dbutils.widgets.get("datasource_path").rstrip("/")
 ROUND_NUMBER = int(dbutils.widgets.get("round_number"))
 INGESTION_DATE_STR = dbutils.widgets.get("ingestion_date")
+INGESTION_DATE = datetime.date.fromisoformat(INGESTION_DATE_STR)
 
 print(f"Catalog        : {CATALOG}")
 print(f"Schema         : {SCHEMA}")
@@ -39,32 +40,110 @@ print(f"Round number   : {ROUND_NUMBER}")
 print(f"Ingestion date : {INGESTION_DATE_STR}")
 
 # COMMAND ----------
-# MAGIC %md ## 1. Entity Execution Plan
+# MAGIC %md ## 1. Registry and Helpers
 
 # COMMAND ----------
 
-# All 11 active entities in ingestion order.
-# Dimension entities (needs_round=False) use round_number=-1 per the ingest notebook contract.
-# Fact/result entities (needs_round=True) receive the actual ROUND_NUMBER.
-#
-# Order: dimensions first, then facts, then high-volume timing data last.
+from pyspark.sql import functions as F
+from pyspark.sql.types import IntegerType, DateType
+from functools import reduce
+
+# Maps entity name -> (source_filename, reader_format, needs_round_number)
+ENTITY_REGISTRY = {
+    "races_data":          ("races_data.csv",          "csv",  False),
+    "race_results":        ("race_results.csv",         "csv",  True),
+    "sprint_results":      ("sprint_results.csv",       "csv",  True),
+    "circuit_info":        ("circuit_info.json",        "json", False),
+    "drivers_data":        ("drivers_data.csv",         "csv",  False),
+    "driver_standings":    ("driver_standings.csv",     "csv",  True),
+    "qualifying_results":  ("qualifying_results.csv",   "csv",  True),
+    "status_data":         ("status_data.csv",          "csv",  True),
+    "constructors_data":   ("constructors_data.csv",    "csv",  False),
+    "constructor_results": ("constructor_results.csv",  "csv",  True),
+    "lap_times":           ("lap_times.csv",            "csv",  True),
+    "pit_stops":           ("pit_stops.csv",            "csv",  True),
+}
+
+# Dimensions first, then facts, then high-volume timing last
 ACTIVE_ENTITIES = [
-    # Dimensions — round_number not applicable
     ("races_data",          False),
     ("circuit_info",        False),
     ("drivers_data",        False),
     ("constructors_data",   False),
-    # Facts / standings — round_number required
     ("race_results",        True),
     ("sprint_results",      True),
     ("qualifying_results",  True),
     ("driver_standings",    True),
     ("status_data",         True),
     ("constructor_results", True),
-    # High-volume timing entities last
     ("lap_times",           True),
     ("pit_stops",           True),
 ]
+
+
+def flatten_circuit_info(json_df):
+    session_keys = ["Session1", "Session2", "Session3", "Session4", "Session5"]
+    session_dfs = []
+    for sk in session_keys:
+        session_df = json_df.select(
+            F.col("name"),
+            F.col("country"),
+            F.col("event"),
+            F.col("format"),
+            F.col("event_date"),
+            F.col(f"sessions.{sk}.name").alias("session_name"),
+            F.col(f"sessions.{sk}.date").alias("session_date"),
+            F.col(f"sessions.{sk}.utc").alias("session_utc"),
+        ).filter(F.col("session_name").isNotNull())
+        session_dfs.append(session_df)
+    return reduce(lambda a, b: a.union(b), session_dfs)
+
+
+def ingest_entity(entity, needs_round):
+    source_filename, reader_format, _ = ENTITY_REGISTRY[entity]
+    source_path = f"{DATASOURCE_PATH}/{source_filename}"
+
+    if reader_format == "csv":
+        df = (
+            spark.read
+            .option("header", "true")
+            .option("inferSchema", "false")
+            .option("encoding", "UTF-8")
+            .csv(source_path)
+            .dropna(how="all")
+        )
+    else:
+        df = flatten_circuit_info(
+            spark.read.option("multiLine", "true").json(source_path)
+        )
+
+    df = (
+        df
+        .withColumn("ingestion_date", F.lit(INGESTION_DATE).cast(DateType()))
+        .withColumn("source_file", F.lit(source_filename))
+    )
+    if needs_round:
+        df = df.withColumn("round_number", F.lit(ROUND_NUMBER).cast(IntegerType()))
+
+    target_table = f"{CATALOG}.{SCHEMA}.{entity}"
+    (
+        df.write
+        .format("delta")
+        .mode("append")
+        .option("mergeSchema", "false")
+        .partitionBy("ingestion_date")
+        .saveAsTable(target_table)
+    )
+
+    rows = spark.table(target_table).filter(
+        F.col("ingestion_date") == F.lit(INGESTION_DATE).cast(DateType())
+    ).count()
+    return rows
+
+# COMMAND ----------
+# MAGIC %md ## 2. Execution Plan
+
+# COMMAND ----------
 
 print(f"Entities to process: {len(ACTIVE_ENTITIES)}")
 for entity, needs_round in ACTIVE_ENTITIES:
@@ -72,7 +151,7 @@ for entity, needs_round in ACTIVE_ENTITIES:
     print(f"  {entity:<25} round_number={rn_display}")
 
 # COMMAND ----------
-# MAGIC %md ## 2. Backfill Loop
+# MAGIC %md ## 3. Backfill Loop
 
 # COMMAND ----------
 
@@ -81,30 +160,16 @@ import time
 results = []
 
 for entity, needs_round in ACTIVE_ENTITIES:
-    round_arg = str(ROUND_NUMBER) if needs_round else "-1"
-    arguments = {
-        "catalog": CATALOG,
-        "schema": SCHEMA,
-        "datasource_path": DATASOURCE_PATH,
-        "entity": entity,
-        "round_number": round_arg,
-        "ingestion_date": INGESTION_DATE_STR,
-        "mode": "append",
-    }
-
-    print(f"\n[{entity}] Starting ingestion ...")
+    print(f"\n[{entity}] Starting ...")
     start_ts = time.time()
     status = "SUCCESS"
     error_msg = None
+    rows = 0
 
     try:
-        run_output = dbutils.notebook.run(
-            "01_ingest_raw",
-            timeout_seconds=600,
-            arguments=arguments,
-        )
+        rows = ingest_entity(entity, needs_round)
         elapsed = time.time() - start_ts
-        print(f"[{entity}] Completed in {elapsed:.1f}s — output: {run_output}")
+        print(f"[{entity}] Done in {elapsed:.1f}s — {rows:,} rows in partition")
     except Exception as exc:
         elapsed = time.time() - start_ts
         status = "FAILED"
@@ -116,37 +181,33 @@ for entity, needs_round in ACTIVE_ENTITIES:
         "needs_round": needs_round,
         "round_number": ROUND_NUMBER if needs_round else None,
         "status": status,
+        "rows": rows,
         "elapsed_s": round(elapsed, 1),
         "error": error_msg,
     })
 
 # COMMAND ----------
-# MAGIC %md ## 3. Backfill Summary
+# MAGIC %md ## 4. Summary
 
 # COMMAND ----------
 
 print(f"\n{'='*80}")
 print(f"BACKFILL SUMMARY — Round {ROUND_NUMBER} — {INGESTION_DATE_STR}")
 print(f"{'='*80}")
-
-header = f"  {'Entity':<25} {'Round':>6} {'Status':>10} {'Elapsed (s)':>12}"
+header = f"  {'Entity':<25} {'Round':>6} {'Rows':>8} {'Status':>10} {'Elapsed (s)':>12}"
 print(header)
-print(f"  {'-'*25} {'-'*6} {'-'*10} {'-'*12}")
+print(f"  {'-'*25} {'-'*6} {'-'*8} {'-'*10} {'-'*12}")
 
 failed_entities = []
 for r in results:
     rn_display = str(r["round_number"]) if r["round_number"] is not None else "N/A"
-    print(f"  {r['entity']:<25} {rn_display:>6} {r['status']:>10} {r['elapsed_s']:>12.1f}")
+    print(f"  {r['entity']:<25} {rn_display:>6} {r['rows']:>8,} {r['status']:>10} {r['elapsed_s']:>12.1f}")
     if r["status"] != "SUCCESS":
         failed_entities.append(r["entity"])
 
 total = len(results)
 succeeded = sum(1 for r in results if r["status"] == "SUCCESS")
-failed = total - succeeded
-
-print(f"\n  Total   : {total}")
-print(f"  Succeeded: {succeeded}")
-print(f"  Failed   : {failed}")
+print(f"\n  Total: {total}  |  Succeeded: {succeeded}  |  Failed: {total - succeeded}")
 
 if failed_entities:
     print(f"\n  Failed entities: {failed_entities}")
@@ -158,9 +219,9 @@ print(f"{'='*80}")
 
 if failed_entities:
     raise RuntimeError(
-        f"Backfill completed with {failed} failure(s). "
+        f"Backfill completed with {total - succeeded} failure(s). "
         f"Failed entities: {failed_entities}. "
-        f"See cell output above for per-entity error details."
+        f"See cell output above for details."
     )
 
 print("All entities ingested successfully.")
