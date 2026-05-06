@@ -114,7 +114,7 @@ print(f"Rows quarantined: {rows_quarantined:,}")
 
 # COMMAND ----------
 
-df = df.drop("Full Name")
+df = df.drop("Full_Name")
 
 # COMMAND ----------
 # MAGIC %md ## Step 6: Deduplication

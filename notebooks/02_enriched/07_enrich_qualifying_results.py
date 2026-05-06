@@ -65,9 +65,9 @@ df = df.withColumn("round_number", F.lit(ROUND_NUMBER).cast("int"))
 
 # BOR fix (QR-02): After GLOBAL-01, BOR's driver_id is NULL — restore to 'bortoleto'
 df = df.withColumn(
-    "Driver ID",
-    F.when((F.col("Driver ID").isNull()) & (F.col("Abbreviation") == "BOR"), F.lit("bortoleto"))
-     .otherwise(F.col("Driver ID"))
+    "Driver_ID",
+    F.when((F.col("Driver_ID").isNull()) & (F.col("Abbreviation") == "BOR"), F.lit("bortoleto"))
+     .otherwise(F.col("Driver_ID"))
 )
 
 # QR-01: Abbreviation not null (NULL_PRIMARY_KEY)
@@ -89,24 +89,24 @@ df = df.filter(
 # QR-06: Q1 Time format when not null (INVALID_LAP_TIME_FORMAT)
 td_pattern = r"^0 days \d{2}:\d{2}:\d{2}(\.\d+)?$"
 invalid_q1 = df.filter(
-    F.col("Q1 Time").isNotNull() & (~F.col("Q1 Time").rlike(td_pattern))
+    F.col("Q1_Time").isNotNull() & (~F.col("Q1_Time").rlike(td_pattern))
 ).withColumn("rejection_reason", F.lit("INVALID_LAP_TIME_FORMAT"))
 quarantine_rows.append(invalid_q1)
-df = df.filter(F.col("Q1 Time").isNull() | F.col("Q1 Time").rlike(td_pattern))
+df = df.filter(F.col("Q1_Time").isNull() | F.col("Q1_Time").rlike(td_pattern))
 
 # QR-07: Q2 Time format when not null (INVALID_LAP_TIME_FORMAT)
 invalid_q2 = df.filter(
-    F.col("Q2 Time").isNotNull() & (~F.col("Q2 Time").rlike(td_pattern))
+    F.col("Q2_Time").isNotNull() & (~F.col("Q2_Time").rlike(td_pattern))
 ).withColumn("rejection_reason", F.lit("INVALID_LAP_TIME_FORMAT"))
 quarantine_rows.append(invalid_q2)
-df = df.filter(F.col("Q2 Time").isNull() | F.col("Q2 Time").rlike(td_pattern))
+df = df.filter(F.col("Q2_Time").isNull() | F.col("Q2_Time").rlike(td_pattern))
 
 # QR-08: Q3 Time format when not null (INVALID_LAP_TIME_FORMAT)
 invalid_q3 = df.filter(
-    F.col("Q3 Time").isNotNull() & (~F.col("Q3 Time").rlike(td_pattern))
+    F.col("Q3_Time").isNotNull() & (~F.col("Q3_Time").rlike(td_pattern))
 ).withColumn("rejection_reason", F.lit("INVALID_LAP_TIME_FORMAT"))
 quarantine_rows.append(invalid_q3)
-df = df.filter(F.col("Q3 Time").isNull() | F.col("Q3 Time").rlike(td_pattern))
+df = df.filter(F.col("Q3_Time").isNull() | F.col("Q3_Time").rlike(td_pattern))
 
 # QR-09: Duplicate primary key (DUPLICATE_PRIMARY_KEY)
 dup_window = Window.partitionBy("round_number", "Abbreviation")
@@ -141,10 +141,10 @@ print(f"Rows quarantined: {rows_quarantined:,}")
 
 df = df \
     .withColumn("position", F.col("Position").cast("int")) \
-    .withColumn("q1_time_seconds", parse_timedelta_seconds(F.col("Q1 Time"))) \
-    .withColumn("q2_time_seconds", parse_timedelta_seconds(F.col("Q2 Time"))) \
-    .withColumn("q3_time_seconds", parse_timedelta_seconds(F.col("Q3 Time"))) \
-    .drop("Full Name", "Team", "Position", "Q1 Time", "Q2 Time", "Q3 Time")
+    .withColumn("q1_time_seconds", parse_timedelta_seconds(F.col("Q1_Time"))) \
+    .withColumn("q2_time_seconds", parse_timedelta_seconds(F.col("Q2_Time"))) \
+    .withColumn("q3_time_seconds", parse_timedelta_seconds(F.col("Q3_Time"))) \
+    .drop("Full_Name", "Team", "Position", "Q1_Time", "Q2_Time", "Q3_Time")
 
 # COMMAND ----------
 # MAGIC %md ## Step 6: Deduplication

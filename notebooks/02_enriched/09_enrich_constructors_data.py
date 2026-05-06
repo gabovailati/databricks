@@ -50,17 +50,17 @@ from pyspark.sql.window import Window
 quarantine_rows = []
 
 # CD-01: Team Name not null (NULL_PRIMARY_KEY)
-null_team = df.filter(F.col("Team Name").isNull()).withColumn("rejection_reason", F.lit("NULL_PRIMARY_KEY"))
+null_team = df.filter(F.col("Team_Name").isNull()).withColumn("rejection_reason", F.lit("NULL_PRIMARY_KEY"))
 quarantine_rows.append(null_team)
-df = df.filter(F.col("Team Name").isNotNull())
+df = df.filter(F.col("Team_Name").isNotNull())
 
 # CD-02: Team Name non-empty (EMPTY_TEAM_NAME)
-empty_team = df.filter(F.length(F.trim(F.col("Team Name"))) == 0).withColumn("rejection_reason", F.lit("EMPTY_TEAM_NAME"))
+empty_team = df.filter(F.length(F.trim(F.col("Team_Name"))) == 0).withColumn("rejection_reason", F.lit("EMPTY_TEAM_NAME"))
 quarantine_rows.append(empty_team)
-df = df.filter(F.length(F.trim(F.col("Team Name"))) > 0)
+df = df.filter(F.length(F.trim(F.col("Team_Name"))) > 0)
 
 # CD-03: Duplicate Team Name (DUPLICATE_PRIMARY_KEY)
-dup_window = Window.partitionBy("Team Name")
+dup_window = Window.partitionBy("Team_Name")
 df_with_dup = df.withColumn("_dup_count", F.count("*").over(dup_window))
 dup_team = df_with_dup.filter(F.col("_dup_count") > 1).drop("_dup_count").withColumn("rejection_reason", F.lit("DUPLICATE_PRIMARY_KEY"))
 quarantine_rows.append(dup_team)
@@ -94,7 +94,7 @@ race_results_raw = spark.table(f"{CATALOG}.{RAW_SCHEMA}.race_results") \
     .select("TeamName", "TeamId", "TeamColor") \
     .distinct()
 
-df = df.join(race_results_raw, df["Team Name"] == race_results_raw["TeamName"], how="left") \
+df = df.join(race_results_raw, df["Team_Name"] == race_results_raw["TeamName"], how="left") \
     .drop("TeamName") \
     .withColumnRenamed("TeamId", "team_id") \
     .withColumnRenamed("TeamColor", "team_color")
@@ -135,7 +135,7 @@ print(f"Total rows quarantined: {rows_quarantined:,}")
 
 # COMMAND ----------
 
-pk_cols = ["Team Name"]
+pk_cols = ["Team_Name"]
 df = df.dropDuplicates(pk_cols)
 
 # COMMAND ----------

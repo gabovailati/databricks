@@ -50,9 +50,9 @@ from pyspark.sql.window import Window
 quarantine_rows = []
 
 # DR-01: Driver ID not null (NULL_PRIMARY_KEY)
-null_id = df.filter(F.col("Driver ID").isNull()).withColumn("rejection_reason", F.lit("NULL_PRIMARY_KEY"))
+null_id = df.filter(F.col("Driver_ID").isNull()).withColumn("rejection_reason", F.lit("NULL_PRIMARY_KEY"))
 quarantine_rows.append(null_id)
-df = df.filter(F.col("Driver ID").isNotNull())
+df = df.filter(F.col("Driver_ID").isNotNull())
 
 # DR-02: Abbreviation not null (NULL_ABBREVIATION)
 null_abbr = df.filter(F.col("Abbreviation").isNull()).withColumn("rejection_reason", F.lit("NULL_ABBREVIATION"))
@@ -65,14 +65,14 @@ quarantine_rows.append(null_number)
 df = df.filter(F.col("Number").isNotNull())
 
 # DR-07: First Name not null (NULL_DRIVER_NAME)
-null_fname = df.filter(F.col("First Name").isNull()).withColumn("rejection_reason", F.lit("NULL_DRIVER_NAME"))
+null_fname = df.filter(F.col("First_Name").isNull()).withColumn("rejection_reason", F.lit("NULL_DRIVER_NAME"))
 quarantine_rows.append(null_fname)
-df = df.filter(F.col("First Name").isNotNull())
+df = df.filter(F.col("First_Name").isNotNull())
 
 # DR-08: Last Name not null (NULL_DRIVER_NAME)
-null_lname = df.filter(F.col("Last Name").isNull()).withColumn("rejection_reason", F.lit("NULL_DRIVER_NAME"))
+null_lname = df.filter(F.col("Last_Name").isNull()).withColumn("rejection_reason", F.lit("NULL_DRIVER_NAME"))
 quarantine_rows.append(null_lname)
-df = df.filter(F.col("Last Name").isNotNull())
+df = df.filter(F.col("Last_Name").isNotNull())
 
 # DR-09: Team not null (NULL_TEAM_REFERENCE)
 null_team = df.filter(F.col("Team").isNull()).withColumn("rejection_reason", F.lit("NULL_TEAM_REFERENCE"))
@@ -81,9 +81,9 @@ df = df.filter(F.col("Team").isNotNull())
 
 # DR-04: Driver ID slug format (INVALID_DRIVER_ID_FORMAT)
 slug_pattern = r"^[a-z0-9_]+$"
-invalid_slug = df.filter(~F.col("Driver ID").rlike(slug_pattern)).withColumn("rejection_reason", F.lit("INVALID_DRIVER_ID_FORMAT"))
+invalid_slug = df.filter(~F.col("Driver_ID").rlike(slug_pattern)).withColumn("rejection_reason", F.lit("INVALID_DRIVER_ID_FORMAT"))
 quarantine_rows.append(invalid_slug)
-df = df.filter(F.col("Driver ID").rlike(slug_pattern))
+df = df.filter(F.col("Driver_ID").rlike(slug_pattern))
 
 # DR-05: Abbreviation format (INVALID_ABBREVIATION_FORMAT)
 abbr_pattern = r"^[A-Z]{3}$"
@@ -98,7 +98,7 @@ num_oor = df.filter(
 quarantine_rows.append(num_oor)
 
 # DR-11: Duplicate Driver ID (DUPLICATE_PRIMARY_KEY)
-dup_id_window = Window.partitionBy("Driver ID")
+dup_id_window = Window.partitionBy("Driver_ID")
 df_with_dup = df.withColumn("_dup_count", F.count("*").over(dup_id_window))
 dup_id = df_with_dup.filter(F.col("_dup_count") > 1).drop("_dup_count").withColumn("rejection_reason", F.lit("DUPLICATE_PRIMARY_KEY"))
 quarantine_rows.append(dup_id)
@@ -135,14 +135,14 @@ print(f"Rows quarantined: {rows_quarantined:,}")
 
 # COMMAND ----------
 
-df = df.drop("Full Name")
+df = df.drop("Full_Name")
 
 # COMMAND ----------
 # MAGIC %md ## Step 6: Deduplication
 
 # COMMAND ----------
 
-pk_cols = ["Driver ID"]
+pk_cols = ["Driver_ID"]
 df = df.dropDuplicates(pk_cols)
 
 # COMMAND ----------

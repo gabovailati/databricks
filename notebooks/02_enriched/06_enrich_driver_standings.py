@@ -64,9 +64,9 @@ if ROUND_NUMBER is None or ROUND_NUMBER < 0 or ROUND_NUMBER > 24:
 df = df.withColumn("round_number", F.lit(ROUND_NUMBER).cast("int"))
 
 # DS-01: Driver ID not null (NULL_PRIMARY_KEY)
-null_id = df.filter(F.col("Driver ID").isNull()).withColumn("rejection_reason", F.lit("NULL_PRIMARY_KEY"))
+null_id = df.filter(F.col("Driver_ID").isNull()).withColumn("rejection_reason", F.lit("NULL_PRIMARY_KEY"))
 quarantine_rows.append(null_id)
-df = df.filter(F.col("Driver ID").isNotNull())
+df = df.filter(F.col("Driver_ID").isNotNull())
 
 # DS-02: Position not null (NULL_STANDINGS_POSITION)
 null_pos = df.filter(F.col("Position").isNull()).withColumn("rejection_reason", F.lit("NULL_STANDINGS_POSITION"))
@@ -93,7 +93,7 @@ quarantine_rows.append(neg_pts)
 df = df.filter(F.col("Points").cast("int") >= 0)
 
 # DS-07: Duplicate primary key (DUPLICATE_PRIMARY_KEY)
-dup_window = Window.partitionBy("round_number", "Driver ID")
+dup_window = Window.partitionBy("round_number", "Driver_ID")
 df_with_dup = df.withColumn("_dup_count", F.count("*").over(dup_window))
 dup_pk = df_with_dup.filter(F.col("_dup_count") > 1).drop("_dup_count").withColumn("rejection_reason", F.lit("DUPLICATE_PRIMARY_KEY"))
 quarantine_rows.append(dup_pk)
@@ -126,14 +126,14 @@ print(f"Rows quarantined: {rows_quarantined:,}")
 df = df \
     .withColumn("position", F.col("Position").cast("int")) \
     .withColumn("points", F.col("Points").cast("int")) \
-    .drop("Full Name", "Abbreviation", "Team", "Position", "Points")
+    .drop("Full_Name", "Abbreviation", "Team", "Position", "Points")
 
 # COMMAND ----------
 # MAGIC %md ## Step 6: Deduplication
 
 # COMMAND ----------
 
-pk_cols = ["round_number", "Driver ID"]
+pk_cols = ["round_number", "Driver_ID"]
 df = df.dropDuplicates(pk_cols)
 
 # COMMAND ----------

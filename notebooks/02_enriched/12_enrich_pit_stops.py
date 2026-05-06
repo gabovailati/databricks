@@ -69,9 +69,9 @@ quarantine_rows.append(null_driver)
 df = df.filter(F.col("Driver").isNotNull())
 
 # PS-02: Lap Number not null (NULL_PRIMARY_KEY)
-null_lap = df.filter(F.col("Lap Number").isNull()).withColumn("rejection_reason", F.lit("NULL_PRIMARY_KEY"))
+null_lap = df.filter(F.col("Lap_Number").isNull()).withColumn("rejection_reason", F.lit("NULL_PRIMARY_KEY"))
 quarantine_rows.append(null_lap)
-df = df.filter(F.col("Lap Number").isNotNull())
+df = df.filter(F.col("Lap_Number").isNotNull())
 
 # PS-03: Driver abbreviation format (INVALID_ABBREVIATION_FORMAT)
 abbr_pattern = r"^[A-Z]{3}$"
@@ -81,33 +81,33 @@ df = df.filter(F.col("Driver").rlike(abbr_pattern))
 
 # PS-04: Lap Number range (LAP_NUMBER_OUT_OF_RANGE)
 lap_oor = df.filter(
-    (F.col("Lap Number").cast("int") < 1) | (F.col("Lap Number").cast("int") > 100)
+    (F.col("Lap_Number").cast("int") < 1) | (F.col("Lap_Number").cast("int") > 100)
 ).withColumn("rejection_reason", F.lit("LAP_NUMBER_OUT_OF_RANGE"))
 quarantine_rows.append(lap_oor)
 df = df.filter(
-    (F.col("Lap Number").cast("int") >= 1) & (F.col("Lap Number").cast("int") <= 100)
+    (F.col("Lap_Number").cast("int") >= 1) & (F.col("Lap_Number").cast("int") <= 100)
 )
 
 # PS-05: Pit In Time collection failure flag — if non-null, flag for data steward (do not quarantine individual rows)
-pit_in_unexpected = df.filter(F.col("Pit In Time").isNotNull()).withColumn("rejection_reason", F.lit("PIT_IN_TIME_UNEXPECTED_VALUE"))
+pit_in_unexpected = df.filter(F.col("Pit_In_Time").isNotNull()).withColumn("rejection_reason", F.lit("PIT_IN_TIME_UNEXPECTED_VALUE"))
 if not pit_in_unexpected.rdd.isEmpty():
     print(f"WARNING: Unexpected non-null Pit In Time values detected: {pit_in_unexpected.count()} rows. Flagging for data steward review.")
 
 # PS-06: Pit Out Time not null (NULL_PIT_OUT_TIME)
-null_pit_out = df.filter(F.col("Pit Out Time").isNull()).withColumn("rejection_reason", F.lit("NULL_PIT_OUT_TIME"))
+null_pit_out = df.filter(F.col("Pit_Out_Time").isNull()).withColumn("rejection_reason", F.lit("NULL_PIT_OUT_TIME"))
 quarantine_rows.append(null_pit_out)
-df = df.filter(F.col("Pit Out Time").isNotNull())
+df = df.filter(F.col("Pit_Out_Time").isNotNull())
 
 # PS-07: Pit Out Time format (INVALID_LAP_TIME_FORMAT)
 td_pattern = r"^0 days \d{2}:\d{2}:\d{2}(\.\d+)?$"
 invalid_pit_out = df.filter(
-    ~F.col("Pit Out Time").rlike(td_pattern)
+    ~F.col("Pit_Out_Time").rlike(td_pattern)
 ).withColumn("rejection_reason", F.lit("INVALID_LAP_TIME_FORMAT"))
 quarantine_rows.append(invalid_pit_out)
-df = df.filter(F.col("Pit Out Time").rlike(td_pattern))
+df = df.filter(F.col("Pit_Out_Time").rlike(td_pattern))
 
 # PS-10: Duplicate primary key (DUPLICATE_PRIMARY_KEY)
-dup_window = Window.partitionBy("round_number", "Driver", "Lap Number")
+dup_window = Window.partitionBy("round_number", "Driver", "Lap_Number")
 df_with_dup = df.withColumn("_dup_count", F.count("*").over(dup_window))
 dup_pk = df_with_dup.filter(F.col("_dup_count") > 1).drop("_dup_count").withColumn("rejection_reason", F.lit("DUPLICATE_PRIMARY_KEY"))
 quarantine_rows.append(dup_pk)
@@ -138,9 +138,9 @@ print(f"Rows quarantined: {rows_quarantined:,}")
 # COMMAND ----------
 
 df = df \
-    .withColumn("lap_number", F.col("Lap Number").cast("int")) \
-    .withColumn("pit_out_time_seconds", parse_timedelta_seconds(F.col("Pit Out Time"))) \
-    .drop("Lap Number", "Pit Out Time")
+    .withColumn("lap_number", F.col("Lap_Number").cast("int")) \
+    .withColumn("pit_out_time_seconds", parse_timedelta_seconds(F.col("Pit_Out_Time"))) \
+    .drop("Lap_Number", "Pit_Out_Time")
 
 # Pit In Time is 100% null — retained as-is in schema (DQ-03 collection failure marker)
 

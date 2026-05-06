@@ -59,28 +59,28 @@ quarantine_rows.append(round_oor)
 df = df.filter((F.col("Round") >= 0) & (F.col("Round") <= 24))
 
 # RD-03: Event Name not null (NULL_EVENT_NAME)
-null_event = df.filter(F.col("Event Name").isNull()).withColumn("rejection_reason", F.lit("NULL_EVENT_NAME"))
+null_event = df.filter(F.col("Event_Name").isNull()).withColumn("rejection_reason", F.lit("NULL_EVENT_NAME"))
 quarantine_rows.append(null_event)
-df = df.filter(F.col("Event Name").isNotNull())
+df = df.filter(F.col("Event_Name").isNotNull())
 
 # RD-04: Official Event Name not null (NULL_OFFICIAL_EVENT_NAME)
-null_official = df.filter(F.col("Official Event Name").isNull()).withColumn("rejection_reason", F.lit("NULL_OFFICIAL_EVENT_NAME"))
+null_official = df.filter(F.col("Official_Event_Name").isNull()).withColumn("rejection_reason", F.lit("NULL_OFFICIAL_EVENT_NAME"))
 quarantine_rows.append(null_official)
-df = df.filter(F.col("Official Event Name").isNotNull())
+df = df.filter(F.col("Official_Event_Name").isNotNull())
 
 # RD-05: First Session datetime format (INVALID_DATETIME_FORMAT)
 ts_pattern = r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$"
 invalid_first_session = df.filter(
-    F.col("First Session").isNull() | (~F.col("First Session").rlike(ts_pattern))
+    F.col("First_Session").isNull() | (~F.col("First_Session").rlike(ts_pattern))
 ).withColumn("rejection_reason", F.lit("INVALID_DATETIME_FORMAT"))
 quarantine_rows.append(invalid_first_session)
 df = df.filter(
-    F.col("First Session").isNotNull() & F.col("First Session").rlike(ts_pattern)
+    F.col("First_Session").isNotNull() & F.col("First_Session").rlike(ts_pattern)
 )
 
 # RD-07: Non-ASCII encoding check — quarantine if replacement character present
 encoding_bad = df.filter(
-    F.col("Official Event Name").contains("?") | F.col("Location").isNull()
+    F.col("Official_Event_Name").contains("?") | F.col("Location").isNull()
 ).withColumn("rejection_reason", F.lit("ENCODING_ERROR"))
 quarantine_rows.append(encoding_bad)
 
@@ -117,9 +117,9 @@ print(f"Rows quarantined: {rows_quarantined:,}")
 # COMMAND ----------
 
 df = df \
-    .withColumn("first_session_utc", F.to_timestamp(F.col("First Session"))) \
-    .withColumn("last_session_utc", F.to_timestamp(F.col("Last Session"))) \
-    .drop("First Session", "Last Session") \
+    .withColumn("first_session_utc", F.to_timestamp(F.col("First_Session"))) \
+    .withColumn("last_session_utc", F.to_timestamp(F.col("Last_Session"))) \
+    .drop("First_Session", "Last_Session") \
     .withColumnRenamed("first_session_utc", "first_session") \
     .withColumnRenamed("last_session_utc", "last_session")
 

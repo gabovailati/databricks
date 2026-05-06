@@ -69,9 +69,9 @@ quarantine_rows.append(null_driver)
 df = df.filter(F.col("Driver").isNotNull())
 
 # LT-02: Lap Number not null (NULL_PRIMARY_KEY)
-null_lap = df.filter(F.col("Lap Number").isNull()).withColumn("rejection_reason", F.lit("NULL_PRIMARY_KEY"))
+null_lap = df.filter(F.col("Lap_Number").isNull()).withColumn("rejection_reason", F.lit("NULL_PRIMARY_KEY"))
 quarantine_rows.append(null_lap)
-df = df.filter(F.col("Lap Number").isNotNull())
+df = df.filter(F.col("Lap_Number").isNotNull())
 
 # LT-03: Driver abbreviation format (INVALID_ABBREVIATION_FORMAT)
 abbr_pattern = r"^[A-Z]{3}$"
@@ -81,11 +81,11 @@ df = df.filter(F.col("Driver").rlike(abbr_pattern))
 
 # LT-04: Lap Number range (LAP_NUMBER_OUT_OF_RANGE)
 lap_oor = df.filter(
-    (F.col("Lap Number").cast("int") < 1) | (F.col("Lap Number").cast("int") > 100)
+    (F.col("Lap_Number").cast("int") < 1) | (F.col("Lap_Number").cast("int") > 100)
 ).withColumn("rejection_reason", F.lit("LAP_NUMBER_OUT_OF_RANGE"))
 quarantine_rows.append(lap_oor)
 df = df.filter(
-    (F.col("Lap Number").cast("int") >= 1) & (F.col("Lap Number").cast("int") <= 100)
+    (F.col("Lap_Number").cast("int") >= 1) & (F.col("Lap_Number").cast("int") <= 100)
 )
 
 # LT-05: Position range (POSITION_OUT_OF_RANGE)
@@ -102,11 +102,11 @@ df = df.filter(
 # LT-06: Lap Time format — should never be null (INVALID_LAP_TIME_FORMAT)
 td_pattern = r"^0 days \d{2}:\d{2}:\d{2}(\.\d+)?$"
 invalid_lap_time = df.filter(
-    F.col("Lap Time").isNull() | (~F.col("Lap Time").rlike(td_pattern))
+    F.col("Lap_Time").isNull() | (~F.col("Lap_Time").rlike(td_pattern))
 ).withColumn("rejection_reason", F.lit("INVALID_LAP_TIME_FORMAT"))
 quarantine_rows.append(invalid_lap_time)
 df = df.filter(
-    F.col("Lap Time").isNotNull() & F.col("Lap Time").rlike(td_pattern)
+    F.col("Lap_Time").isNotNull() & F.col("Lap_Time").rlike(td_pattern)
 )
 
 # LT-07: Cumulative Time format — should never be null (INVALID_LAP_TIME_FORMAT)
@@ -120,33 +120,33 @@ df = df.filter(
 
 # LT-08: Sector 2 format — should never be null (INVALID_SECTOR_TIME_FORMAT)
 invalid_s2 = df.filter(
-    F.col("Sector 2").isNull() | (~F.col("Sector 2").rlike(td_pattern))
+    F.col("Sector_2").isNull() | (~F.col("Sector_2").rlike(td_pattern))
 ).withColumn("rejection_reason", F.lit("INVALID_SECTOR_TIME_FORMAT"))
 quarantine_rows.append(invalid_s2)
 df = df.filter(
-    F.col("Sector 2").isNotNull() & F.col("Sector 2").rlike(td_pattern)
+    F.col("Sector_2").isNotNull() & F.col("Sector_2").rlike(td_pattern)
 )
 
 # LT-09: Sector 3 format — should never be null (INVALID_SECTOR_TIME_FORMAT)
 invalid_s3 = df.filter(
-    F.col("Sector 3").isNull() | (~F.col("Sector 3").rlike(td_pattern))
+    F.col("Sector_3").isNull() | (~F.col("Sector_3").rlike(td_pattern))
 ).withColumn("rejection_reason", F.lit("INVALID_SECTOR_TIME_FORMAT"))
 quarantine_rows.append(invalid_s3)
 df = df.filter(
-    F.col("Sector 3").isNotNull() & F.col("Sector 3").rlike(td_pattern)
+    F.col("Sector_3").isNotNull() & F.col("Sector_3").rlike(td_pattern)
 )
 
 # LT-10: Sector 1 format when not null, AND not lap 1 (structural expectation: null on lap 1)
 # Sector 1 null on lap 1 is expected — do not quarantine those rows
 invalid_s1 = df.filter(
-    F.col("Sector 1").isNotNull() &
-    (F.col("Lap Number").cast("int") != 1) &
-    (~F.col("Sector 1").rlike(td_pattern))
+    F.col("Sector_1").isNotNull() &
+    (F.col("Lap_Number").cast("int") != 1) &
+    (~F.col("Sector_1").rlike(td_pattern))
 ).withColumn("rejection_reason", F.lit("INVALID_SECTOR_TIME_FORMAT"))
 quarantine_rows.append(invalid_s1)
 
 # LT-12: Duplicate primary key (DUPLICATE_PRIMARY_KEY)
-dup_window = Window.partitionBy("round_number", "Driver", "Lap Number")
+dup_window = Window.partitionBy("round_number", "Driver", "Lap_Number")
 df_with_dup = df.withColumn("_dup_count", F.count("*").over(dup_window))
 dup_pk = df_with_dup.filter(F.col("_dup_count") > 1).drop("_dup_count").withColumn("rejection_reason", F.lit("DUPLICATE_PRIMARY_KEY"))
 quarantine_rows.append(dup_pk)
@@ -177,18 +177,18 @@ print(f"Rows quarantined: {rows_quarantined:,}")
 # COMMAND ----------
 
 df = df \
-    .withColumn("lap_number", F.col("Lap Number").cast("int")) \
+    .withColumn("lap_number", F.col("Lap_Number").cast("int")) \
     .withColumn("position", F.col("Position").cast("int")) \
-    .withColumn("lap_time_seconds", parse_timedelta_seconds(F.col("Lap Time"))) \
+    .withColumn("lap_time_seconds", parse_timedelta_seconds(F.col("Lap_Time"))) \
     .withColumn("time_seconds", parse_timedelta_seconds(F.col("Time"))) \
-    .withColumn("sector_2_seconds", parse_timedelta_seconds(F.col("Sector 2"))) \
-    .withColumn("sector_3_seconds", parse_timedelta_seconds(F.col("Sector 3"))) \
+    .withColumn("sector_2_seconds", parse_timedelta_seconds(F.col("Sector_2"))) \
+    .withColumn("sector_3_seconds", parse_timedelta_seconds(F.col("Sector_3"))) \
     .withColumn(
         "sector_1_seconds",
         F.when(F.col("lap_number") == 1, F.lit(None).cast("double"))
-         .otherwise(parse_timedelta_seconds(F.col("Sector 1")))
+         .otherwise(parse_timedelta_seconds(F.col("Sector_1")))
     ) \
-    .drop("Lap Number", "Position", "Lap Time", "Time", "Sector 1", "Sector 2", "Sector 3")
+    .drop("Lap_Number", "Position", "Lap_Time", "Time", "Sector_1", "Sector_2", "Sector_3")
 
 # COMMAND ----------
 # MAGIC %md ## Step 6: Deduplication
