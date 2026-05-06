@@ -9,9 +9,9 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("catalog", "f1_platform", "Unity Catalog name")
-dbutils.widgets.text("raw_schema", "raw", "Raw schema name")
-dbutils.widgets.text("enriched_schema", "enriched", "Enriched schema name")
+dbutils.widgets.text("catalog", "workspace", "Unity Catalog name")
+dbutils.widgets.text("raw_schema", "f1_raw", "Raw schema name")
+dbutils.widgets.text("enriched_schema", "f1_enriched", "Enriched schema name")
 dbutils.widgets.text("ingestion_date", "", "Ingestion date (YYYY-MM-DD)")
 
 CATALOG = dbutils.widgets.get("catalog")

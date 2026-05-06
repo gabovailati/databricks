@@ -21,9 +21,9 @@
 
 import datetime
 
-dbutils.widgets.text("catalog", "f1_platform", "Unity Catalog name")
-dbutils.widgets.text("schema", "raw", "Schema / layer name")
-dbutils.widgets.text("datasource_path", "/Volumes/f1_platform/raw/landing/datasource", "Path to datasource/ folder")
+dbutils.widgets.text("catalog", "workspace", "Unity Catalog name")
+dbutils.widgets.text("schema", "f1_raw", "Schema / layer name")
+dbutils.widgets.text("datasource_path", "/Volumes/workspace/f1_raw/landing/datasource", "Path to datasource/ folder")
 dbutils.widgets.text("entity", "", "Entity name (e.g. race_results)")
 dbutils.widgets.text("round_number", "-1", "Round number (-1 = not applicable for dimension entities)")
 dbutils.widgets.text("ingestion_date", str(datetime.date.today()), "Ingestion date YYYY-MM-DD")

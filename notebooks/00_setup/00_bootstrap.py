@@ -13,17 +13,17 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("catalog", "f1_platform", "Unity Catalog name")
+dbutils.widgets.text("catalog", "workspace", "Unity Catalog name")
 dbutils.widgets.text("landing_volume", "landing", "Volume name for raw file landing")
 
 CATALOG = dbutils.widgets.get("catalog")
 LANDING_VOLUME = dbutils.widgets.get("landing_volume")
 
-SCHEMAS = ["raw", "enriched", "ids", "curated", "quarantine"]
+SCHEMAS = ["f1_raw", "f1_enriched", "f1_ids", "f1_curated", "f1_quarantine"]
 
 print(f"Catalog : {CATALOG}")
 print(f"Schemas : {SCHEMAS}")
-print(f"Volume  : {CATALOG}.raw.{LANDING_VOLUME}")
+print(f"Volume  : {CATALOG}.f1_raw.{LANDING_VOLUME}")
 
 # COMMAND ----------
 # MAGIC %md ## 1. Catalog
@@ -51,7 +51,7 @@ for schema in SCHEMAS:
 # Pipeline notebooks reference this path as:
 #   /Volumes/{catalog}/raw/{landing_volume}/datasource/
 spark.sql(f"""
-    CREATE VOLUME IF NOT EXISTS `{CATALOG}`.`raw`.`{LANDING_VOLUME}`
+    CREATE VOLUME IF NOT EXISTS `{CATALOG}`.`f1_raw`.`{LANDING_VOLUME}`
     COMMENT 'Landing zone for raw F1 source files (CSV/JSON) delivered by the data provider'
 """)
 print(f"✓ Volume `{CATALOG}`.raw.`{LANDING_VOLUME}` ready")
@@ -79,9 +79,9 @@ except Exception:
 # MAGIC %md
 # MAGIC ## 5. Next Steps
 # MAGIC
-# MAGIC 1. Upload all files from `datasource/` to `/Volumes/f1_platform/raw/landing/datasource/`
+# MAGIC 1. Upload all files from `datasource/` to `/Volumes/workspace/f1_raw/landing/datasource/`
 # MAGIC    - Use the Databricks UI: Catalog → f1_platform → raw → landing → Upload files
-# MAGIC    - Or via Databricks CLI: `databricks fs cp datasource/ dbfs:/Volumes/f1_platform/raw/landing/datasource/ --recursive`
+# MAGIC    - Or via Databricks CLI: `databricks fs cp datasource/ dbfs:/Volumes/workspace/f1_raw/landing/datasource/ --recursive`
 # MAGIC 2. Connect this repo via Databricks Repos (Workspace → Repos → Add Repo → paste GitHub URL)
-# MAGIC 3. Run `notebooks/01_raw/00_file_arrival_sensor.py` with `datasource_path = /Volumes/f1_platform/raw/landing/datasource`
+# MAGIC 3. Run `notebooks/01_raw/00_file_arrival_sensor.py` with `datasource_path = /Volumes/workspace/f1_raw/landing/datasource`
 # MAGIC 4. Run `notebooks/01_raw/02_historical_backfill.py` with `round_number` for the current round

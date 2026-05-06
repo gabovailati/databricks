@@ -14,8 +14,8 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("catalog", "f1_platform", "Unity Catalog name")
-dbutils.widgets.text("datasource_path", "/Volumes/f1_platform/raw/landing/datasource", "Path to datasource/ folder")
+dbutils.widgets.text("catalog", "workspace", "Unity Catalog name")
+dbutils.widgets.text("datasource_path", "/Volumes/workspace/f1_raw/landing/datasource", "Path to datasource/ folder")
 dbutils.widgets.text("round_number", "1", "Season round number (integer)")
 dbutils.widgets.text("max_wait_minutes", "120", "Maximum minutes to wait before raising TimeoutError")
 dbutils.widgets.text("retry_interval_minutes", "10", "Minutes to sleep between polling attempts")

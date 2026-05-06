@@ -14,9 +14,9 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("catalog", "f1_catalog", "Unity Catalog name")
+dbutils.widgets.text("catalog", "workspace", "Unity Catalog name")
 dbutils.widgets.text("schema", "f1_raw", "Schema / database name")
-dbutils.widgets.text("datasource_path", "/Volumes/f1_catalog/f1_raw/landing/datasource", "Absolute path to datasource/ folder")
+dbutils.widgets.text("datasource_path", "/Volumes/workspace/f1_raw/landing/datasource", "Absolute path to datasource/ folder")
 
 CATALOG = dbutils.widgets.get("catalog")
 SCHEMA = dbutils.widgets.get("schema")
